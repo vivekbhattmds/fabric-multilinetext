@@ -27872,56 +27872,115 @@ fabric.util.object.extend(fabric.IText.prototype, /** @lends fabric.IText.protot
      * @returns {Array} Array of line(s) into which the given text is wrapped
      * to.
      */
-    _wrapLine: function(_line, lineIndex, desiredWidth) {
+    _wrapLine: function(ctx, text, lineIndex) {
       var lineWidth        = 0,
-          graphemeLines    = [],
-          line             = [],
-          // spaces in different languges?
-          words            = _line.split(this._reSpaceAndTab),
+          lines            = [],
+          line             = '',
+          words            = text.split(' '),
           word             = '',
+          letter           = '',
           offset           = 0,
           infix            = ' ',
           wordWidth        = 0,
           infixWidth       = 0,
+          letterWidth      = 0,      
           largestWordWidth = 0,
           lineJustStarted = true,
           additionalSpace = this._getWidthOfCharSpacing();
+
+      
       for (var i = 0; i < words.length; i++) {
-        // i would avoid resplitting the graphemes
-        word = fabric.util.string.graphemeSplit(words[i]);
-        wordWidth = this._measureWord(word, lineIndex, offset);
+        word = words[i];
+        wordWidth = this._measureText(ctx, word, lineIndex, offset);
+        lineWidth += infixWidth;
+
+        // Break Words if wordWidth is greater than textbox width
+        if (this.breakWords && wordWidth > this.width) {
+            line += infix;
+            var wordLetters = word.split('');
+            while (wordLetters.length) {
+                letterWidth = this._getWidthOfChar(ctx, wordLetters[0], lineIndex, offset);
+                if (lineWidth + letterWidth > this.width) {
+                    lines.push(line);
+                    line = '';
+                    lineWidth = 0;
+                }
+                line += wordLetters.shift();
+                offset++;
+                lineWidth += letterWidth;
+            }
+            word = '';
+        } else {
+            lineWidth += wordWidth;
+        }
+
+        if (lineWidth >= this.width && line !== '') {
+            lines.push(line);
+            line = '';
+            lineWidth = wordWidth;
+        }
+
+        if (line !== '' || i === 1) {
+            line += infix;
+        }
+        line += word;
         offset += word.length;
-
-        lineWidth += infixWidth + wordWidth - additionalSpace;
-
-        if (lineWidth >= desiredWidth && !lineJustStarted) {
-          graphemeLines.push(line);
-          line = [];
-          lineWidth = wordWidth;
-          lineJustStarted = true;
-        }
-
-        if (!lineJustStarted) {
-          line.push(infix);
-        }
-        line = line.concat(word);
-
-        infixWidth = this._measureWord([infix], lineIndex, offset);
+        infixWidth = this._measureText(ctx, infix, lineIndex, offset);
         offset++;
-        lineJustStarted = false;
+
         // keep track of largest word
-        if (wordWidth > largestWordWidth) {
-          largestWordWidth = wordWidth;
+        if (wordWidth > largestWordWidth && !this.breakWords) {
+            largestWordWidth = wordWidth;
         }
       }
 
-      i && graphemeLines.push(line);
+      i && lines.push(line);
 
       if (largestWordWidth > this.dynamicMinWidth) {
-        this.dynamicMinWidth = largestWordWidth - additionalSpace;
+          this.dynamicMinWidth = largestWordWidth;
       }
 
-      return graphemeLines;
+      return lines;
+
+      // for (var i = 0; i < words.length; i++) {
+      //   word = words[i];
+      //   wordWidth = this._measureText(ctx, word, lineIndex, offset);
+
+      //   offset += word.length;
+
+      //   lineWidth += infixWidth + wordWidth - additionalSpace;
+
+      //   if (lineWidth >= this.width && !lineJustStarted) {
+      //     lines.push(line);
+      //     line = '';
+      //     lineWidth = wordWidth;
+      //     lineJustStarted = true;
+      //   }
+      //   else {
+      //     lineWidth += additionalSpace;
+      //   }
+
+      //   if (!lineJustStarted) {
+      //     line += infix;
+      //   }
+      //   line += word;
+
+      //   infixWidth = this._measureText(ctx, infix, lineIndex, offset);
+      //   offset++;
+      //   lineJustStarted = false;
+      //   // keep track of largest word
+      //   if (wordWidth > largestWordWidth) {
+      //     largestWordWidth = wordWidth;
+      //   }
+      // }
+
+      // i && lines.push(line);
+
+      // if (largestWordWidth > this.dynamicMinWidth) {
+      //   this.dynamicMinWidth = largestWordWidth - additionalSpace;
+      // }
+
+      return lines;
     },
 
     /**
