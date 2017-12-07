@@ -6887,6 +6887,9 @@ fabric.ElementsParser.prototype.checkIfDone = function() {
           this._setCssDimension(prop, cssValue);
         }
       }
+      if (this._isCurrentlyDrawing) {
+        this.freeDrawingBrush && this.freeDrawingBrush._setBrushStyles();
+      }
       this._initRetinaScaling();
       this._setImageSmoothing();
       this.calcOffset();
@@ -7264,7 +7267,6 @@ fabric.ElementsParser.prototype.checkIfDone = function() {
 
     /**
      * Centers object horizontally in the canvas
-     * You might need to call `setCoords` on an object after centering, to update controls area.
      * @param {fabric.Object} object Object to center horizontally
      * @return {fabric.Canvas} thisArg
      */
@@ -7274,7 +7276,6 @@ fabric.ElementsParser.prototype.checkIfDone = function() {
 
     /**
      * Centers object vertically in the canvas
-     * You might need to call `setCoords` on an object after centering, to update controls area.
      * @param {fabric.Object} object Object to center vertically
      * @return {fabric.Canvas} thisArg
      * @chainable
@@ -7285,7 +7286,6 @@ fabric.ElementsParser.prototype.checkIfDone = function() {
 
     /**
      * Centers object vertically and horizontally in the canvas
-     * You might need to call `setCoords` on an object after centering, to update controls area.
      * @param {fabric.Object} object Object to center vertically and horizontally
      * @return {fabric.Canvas} thisArg
      * @chainable
@@ -7298,7 +7298,6 @@ fabric.ElementsParser.prototype.checkIfDone = function() {
 
     /**
      * Centers object vertically and horizontally in the viewport
-     * You might need to call `setCoords` on an object after centering, to update controls area.
      * @param {fabric.Object} object Object to center vertically and horizontally
      * @return {fabric.Canvas} thisArg
      * @chainable
@@ -7311,7 +7310,6 @@ fabric.ElementsParser.prototype.checkIfDone = function() {
 
     /**
      * Centers object horizontally in the viewport, object.top is unchanged
-     * You might need to call `setCoords` on an object after centering, to update controls area.
      * @param {fabric.Object} object Object to center vertically and horizontally
      * @return {fabric.Canvas} thisArg
      * @chainable
@@ -7324,7 +7322,6 @@ fabric.ElementsParser.prototype.checkIfDone = function() {
 
     /**
      * Centers object Vertically in the viewport, object.top is unchanged
-     * You might need to call `setCoords` on an object after centering, to update controls area.
      * @param {fabric.Object} object Object to center vertically and horizontally
      * @return {fabric.Canvas} thisArg
      * @chainable
@@ -7355,6 +7352,7 @@ fabric.ElementsParser.prototype.checkIfDone = function() {
      */
     _centerObject: function(object, center) {
       object.setPositionByOrigin(center, 'center', 'center');
+      object.setCoords();
       this.renderOnAddRemove && this.requestRenderAll();
       return this;
     },
@@ -7941,12 +7939,15 @@ fabric.ElementsParser.prototype.checkIfDone = function() {
     },
 
     /**
-     * Clears a canvas element and removes all event listeners
+     * Clears a canvas element and dispose objects
      * @return {fabric.Canvas} thisArg
      * @chainable
      */
     dispose: function () {
-      this._objects.length = 0;
+      this.forEachObject(function(object) {
+        object.dispose && object.dispose();
+      });
+      this._objects = [];
       this.backgroundImage = null;
       this.overlayImage = null;
       this._iTextInstances = null;
@@ -8069,7 +8070,7 @@ fabric.BaseBrush = fabric.util.createClass(/** @lends fabric.BaseBrush.prototype
   color: 'rgb(0, 0, 0)',
 
   /**
-   * Width of a brush
+   * Width of a brush, has to be a Number, no string literals
    * @type Number
    * @default
    */
@@ -8976,6 +8977,13 @@ fabric.PatternBrush = fabric.util.createClass(fabric.PencilBrush, /** @lends fab
     selectionLineWidth:     1,
 
     /**
+     * Select only shapes that are fully contained in the dragged selection rectangle.
+     * @type Boolean
+     * @default
+     */
+    selectionFullyContained: false,
+
+    /**
      * Default cursor value used when hovering over an object on canvas
      * @type String
      * @default
@@ -9163,6 +9171,9 @@ fabric.PatternBrush = fabric.util.createClass(fabric.PencilBrush, /** @lends fab
       if (this.contextTopDirty && !this._groupSelector && !this.isDrawingMode) {
         this.clearContext(this.contextTop);
         this.contextTopDirty = false;
+      }
+      if (this.isDrawingMode && this._isCurrentlyDrawing) {
+        this.freeDrawingBrush && this.freeDrawingBrush._render();
       }
       var canvasToDrawOn = this.contextContainer;
       this.renderCanvas(canvasToDrawOn, this._chooseObjectsToRender());
@@ -11472,6 +11483,7 @@ fabric.PatternBrush = fabric.util.createClass(fabric.PencilBrush, /** @lends fab
           y2 = y1 + this._groupSelector.top,
           selectionX1Y1 = new fabric.Point(min(x1, x2), min(y1, y2)),
           selectionX2Y2 = new fabric.Point(max(x1, x2), max(y1, y2)),
+          allowIntersect = !this.selectionFullyContained,
           isClick = x1 === x2 && y1 === y2;
       // we iterate reverse order to collect top first in case of click.
       for (var i = this._objects.length; i--; ) {
@@ -11481,10 +11493,10 @@ fabric.PatternBrush = fabric.util.createClass(fabric.PencilBrush, /** @lends fab
           continue;
         }
 
-        if (currentObject.intersectsWithRect(selectionX1Y1, selectionX2Y2) ||
+        if ((allowIntersect && currentObject.intersectsWithRect(selectionX1Y1, selectionX2Y2)) ||
             currentObject.isContainedWithinRect(selectionX1Y1, selectionX2Y2) ||
-            currentObject.containsPoint(selectionX1Y1) ||
-            currentObject.containsPoint(selectionX2Y2)
+            (allowIntersect && currentObject.containsPoint(selectionX1Y1)) ||
+            (allowIntersect && currentObject.containsPoint(selectionX2Y2))
         ) {
           group.push(currentObject);
 
@@ -14355,8 +14367,8 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
         prefix = this.group.transformMatrixKey(skipGroup) + sep;
       };
       return prefix + this.top + sep + this.left + sep + this.scaleX + sep + this.scaleY +
-        sep + this.skewX + sep + this.skewY + sep + this.angle + sep + this.flipX + sep + this.flipY +
-        sep + this.width + sep + this.height;
+        sep + this.skewX + sep + this.skewY + sep + this.angle +
+        sep + this.width + sep + this.height + sep + this.strokeWidth + this.flipX + this.flipY;
     },
 
     /**
@@ -18792,9 +18804,9 @@ fabric.util.object.extend(fabric.Object.prototype, /** @lends fabric.Object.prot
     initialize: function(element, options) {
       options || (options = { });
       this.filters = [];
+      this.cacheKey = 'texture' + fabric.Object.__uid++;
       this.callSuper('initialize', options);
       this._initElement(element, options);
-      this.cacheKey = 'texture' + fabric.Object.__uid++;
     },
 
     /**
@@ -18830,6 +18842,21 @@ fabric.util.object.extend(fabric.Object.prototype, /** @lends fabric.Object.prot
         this.applyFilters();
       }
       return this;
+    },
+
+    /**
+     * Delete cacheKey if we have a webGlBackend
+     * delete reference to image elements
+     */
+    dispose: function() {
+      var backend = fabric.filterBackend;
+      if (backend && backend.evictCachesForKey) {
+        backend.evictCachesForKey(this.cacheKey);
+        backend.evictCachesForKey(this.cacheKey + '_filtered');
+      }
+      this._originalElement = undefined;
+      this._element = undefined;
+      this._filteredEl = undefined;
     },
 
     /**
@@ -24319,10 +24346,17 @@ fabric.Image.filters.BaseFilter.fromObject = function(object, callback) {
           charsToRender = '',
           charBox,
           boxWidth = 0,
-          timeToRender;
+          timeToRender,
+          shortCut = !isJustify && this.isEmptyStyles(lineIndex);
 
       ctx.save();
       top -= lineHeight * this._fontSizeFraction / this.lineHeight;
+      if (shortCut) {
+        // render all the line in one pass without checking
+        this._renderChar(method, ctx, lineIndex, 0, this.textLines[lineIndex], left, top, lineHeight);
+        ctx.restore();
+        return;
+      }
       for (var i = 0, len = line.length - 1; i <= len; i++) {
         timeToRender = i === len || this.charSpacing;
         charsToRender += line[i];
@@ -26270,13 +26304,13 @@ fabric.Image.filters.BaseFilter.fromObject = function(object, callback) {
       if (lineStart !== lineEnd) {
         // step1 remove the trailing of lineStart
         if (this.styles[lineStart]) {
-          for (i = charStart; i < this._textLines[lineStart].length; i++) {
+          for (i = charStart; i < this._unwrappedTextLines[lineStart].length; i++) {
             delete this.styles[lineStart][i];
           }
         }
         // step2 move the trailing of lineEnd to lineStart if needed
         if (this.styles[lineEnd]) {
-          for (i = charEnd; i < this._textLines[lineEnd].length; i++) {
+          for (i = charEnd; i < this._unwrappedTextLines[lineEnd].length; i++) {
             styleObj = this.styles[lineEnd][i];
             if (styleObj) {
               this.styles[lineStart] || (this.styles[lineStart] = { });
@@ -27412,9 +27446,9 @@ fabric.util.object.extend(fabric.IText.prototype, /** @lends fabric.IText.protot
         (this.fontStyle ? 'font-style="' + this.fontStyle + '" ' : ''),
         (this.fontWeight ? 'font-weight="' + this.fontWeight + '" ' : ''),
         (textDecoration ? 'text-decoration="' + textDecoration + '" ' : ''),
-        'style="', this.getSvgStyles(noShadow), '"', this.addPaintOrder(), ' >\n',
+        'style="', this.getSvgStyles(noShadow), '"', this.addPaintOrder(), ' >',
         textAndBg.textSpans.join(''),
-        '\t\t</text>\n',
+        '</text>\n',
         '\t</g>\n'
       );
     },
@@ -27456,11 +27490,11 @@ fabric.util.object.extend(fabric.IText.prototype, /** @lends fabric.IText.protot
           fillStyles = styleProps ? 'style="' + styleProps + '"' : '';
 
       return [
-        '\t\t\t<tspan x="', toFixed(left, NUM_FRACTION_DIGITS), '" y="',
+        '<tspan x="', toFixed(left, NUM_FRACTION_DIGITS), '" y="',
         toFixed(top, NUM_FRACTION_DIGITS), '" ',
         fillStyles, '>',
         fabric.util.string.escapeXml(_char),
-        '</tspan>\n'
+        '</tspan>'
       ].join('');
     },
 
@@ -27872,115 +27906,56 @@ fabric.util.object.extend(fabric.IText.prototype, /** @lends fabric.IText.protot
      * @returns {Array} Array of line(s) into which the given text is wrapped
      * to.
      */
-    _wrapLine: function(ctx, text, lineIndex) {
+    _wrapLine: function(_line, lineIndex, desiredWidth) {
       var lineWidth        = 0,
-          lines            = [],
-          line             = '',
-          words            = text.split(' '),
+          graphemeLines    = [],
+          line             = [],
+          // spaces in different languges?
+          words            = _line.split(this._reSpaceAndTab),
           word             = '',
-          letter           = '',
           offset           = 0,
           infix            = ' ',
           wordWidth        = 0,
           infixWidth       = 0,
-          letterWidth      = 0,      
           largestWordWidth = 0,
           lineJustStarted = true,
           additionalSpace = this._getWidthOfCharSpacing();
-
-      
       for (var i = 0; i < words.length; i++) {
-        word = words[i];
-        wordWidth = this._measureText(ctx, word, lineIndex, offset);
-        lineWidth += infixWidth;
-
-        // Break Words if wordWidth is greater than textbox width
-        if (this.breakWords && wordWidth > this.width) {
-            line += infix;
-            var wordLetters = word.split('');
-            while (wordLetters.length) {
-                letterWidth = this._getWidthOfChar(ctx, wordLetters[0], lineIndex, offset);
-                if (lineWidth + letterWidth > this.width) {
-                    lines.push(line);
-                    line = '';
-                    lineWidth = 0;
-                }
-                line += wordLetters.shift();
-                offset++;
-                lineWidth += letterWidth;
-            }
-            word = '';
-        } else {
-            lineWidth += wordWidth;
-        }
-
-        if (lineWidth >= this.width && line !== '') {
-            lines.push(line);
-            line = '';
-            lineWidth = wordWidth;
-        }
-
-        if (line !== '' || i === 1) {
-            line += infix;
-        }
-        line += word;
+        // i would avoid resplitting the graphemes
+        word = fabric.util.string.graphemeSplit(words[i]);
+        wordWidth = this._measureWord(word, lineIndex, offset);
         offset += word.length;
-        infixWidth = this._measureText(ctx, infix, lineIndex, offset);
-        offset++;
 
+        lineWidth += infixWidth + wordWidth - additionalSpace;
+
+        if (lineWidth >= desiredWidth && !lineJustStarted) {
+          graphemeLines.push(line);
+          line = [];
+          lineWidth = wordWidth;
+          lineJustStarted = true;
+        }
+
+        if (!lineJustStarted) {
+          line.push(infix);
+        }
+        line = line.concat(word);
+
+        infixWidth = this._measureWord([infix], lineIndex, offset);
+        offset++;
+        lineJustStarted = false;
         // keep track of largest word
-        if (wordWidth > largestWordWidth && !this.breakWords) {
-            largestWordWidth = wordWidth;
+        if (wordWidth > largestWordWidth) {
+          largestWordWidth = wordWidth;
         }
       }
 
-      i && lines.push(line);
+      i && graphemeLines.push(line);
 
       if (largestWordWidth > this.dynamicMinWidth) {
-          this.dynamicMinWidth = largestWordWidth;
+        this.dynamicMinWidth = largestWordWidth - additionalSpace;
       }
 
-      return lines;
-
-      // for (var i = 0; i < words.length; i++) {
-      //   word = words[i];
-      //   wordWidth = this._measureText(ctx, word, lineIndex, offset);
-
-      //   offset += word.length;
-
-      //   lineWidth += infixWidth + wordWidth - additionalSpace;
-
-      //   if (lineWidth >= this.width && !lineJustStarted) {
-      //     lines.push(line);
-      //     line = '';
-      //     lineWidth = wordWidth;
-      //     lineJustStarted = true;
-      //   }
-      //   else {
-      //     lineWidth += additionalSpace;
-      //   }
-
-      //   if (!lineJustStarted) {
-      //     line += infix;
-      //   }
-      //   line += word;
-
-      //   infixWidth = this._measureText(ctx, infix, lineIndex, offset);
-      //   offset++;
-      //   lineJustStarted = false;
-      //   // keep track of largest word
-      //   if (wordWidth > largestWordWidth) {
-      //     largestWordWidth = wordWidth;
-      //   }
-      // }
-
-      // i && lines.push(line);
-
-      // if (largestWordWidth > this.dynamicMinWidth) {
-      //   this.dynamicMinWidth = largestWordWidth - additionalSpace;
-      // }
-
-      return lines;
+      return graphemeLines;
     },
 
     /**

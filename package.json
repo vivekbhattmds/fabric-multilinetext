@@ -1,13 +1,13 @@
- {
+{
   "name": "fabric",
   "description": "Object model for HTML5 canvas, and SVG-to-canvas parser. Backed by jsdom and node-canvas.",
   "homepage": "http://fabricjs.com/",
   "version": "2.0.0-rc.3",
-  "author": "Juriy Zaytsev <kangax@gmail.com>",
+  "author": "Vivek Bhatt <vivekbhatt@metadesignsolutions.in>",
   "contributors": [
     {
-      "name": "Andrea Bogazzi",
-      "email": "andreabogazzi79@gmail.com"
+      "name": "Vivek Bhatt",
+      "email": "vivekbhatt@metadesignsolutions.in"
     }
   ],
   "keywords": [
@@ -20,21 +20,21 @@
     "HTML5",
     "object model"
   ],
-  "browser" : {
+  "browser": {
     "canvas": false,
-    "fs":      false,
-    "jsdom":   false,
-    "http":   false,
-    "https":   false,
-    "xmldom":  false,
+    "fs": false,
+    "jsdom": false,
+    "http": false,
+    "https": false,
+    "xmldom": false,
     "url": false
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/kangax/fabric.js"
+    "url": "https://github.com/vivekbhattmds/fabric-multilinetext"
   },
   "bugs": {
-    "url": "https://github.com/kangax/fabric.js/issues"
+    "url": "https://github.com/vivekbhattmds/fabric-multilinetext/issues"
   },
   "license": "MIT",
   "scripts": {
