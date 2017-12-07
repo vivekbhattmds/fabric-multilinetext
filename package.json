@@ -1,5 +1,5 @@
 {
-  "name": "fabric",
+  "name": "fabric-multiline",
   "description": "Object model for HTML5 canvas, and SVG-to-canvas parser. Backed by jsdom and node-canvas.",
   "homepage": "http://fabricjs.com/",
   "version": "2.0.0-rc.3",
